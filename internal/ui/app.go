@@ -121,6 +121,11 @@ func New() Model {
 
 func NewWithConfig(cfg config.Config) Model {
 	cfg = cfg.Clamp()
+	// Paint the palette before anything reads a style: the input below picks
+	// its colors up straight away, and main calls this before bubbletea has
+	// the screen, which is the only moment auto-detection can ask the
+	// terminal what its background is.
+	applyThemeConfig(cfg.Theme)
 	ti := textinput.New()
 	ti.Prompt = "▸ "
 	// Never let the input fall back to the terminal default (white) — it is
