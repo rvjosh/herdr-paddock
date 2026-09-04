@@ -42,6 +42,9 @@ var (
 	stBrand = lipgloss.NewStyle().Foreground(cCyan).Bold(true)
 	// soft drop shadow under the selected card: half blocks in a near-bg tone
 	stShadow = lipgloss.NewStyle().Foreground(cFaint)
+	// the one line on a card that is addressed to you: the agent's NEEDS ME
+	stNeedsLbl = lipgloss.NewStyle().Foreground(cHot).Bold(true)
+	stNeedsVal = lipgloss.NewStyle().Foreground(cText).Bold(true)
 	// title chips: dark status-tinted background, xiaohongshu cover feel
 	stChipBlck = lipgloss.NewStyle().Foreground(cBad).Background(lipgloss.Color("#402734")).Bold(true)
 	stChipWork = lipgloss.NewStyle().Foreground(cWarn).Background(lipgloss.Color("#3d3223"))

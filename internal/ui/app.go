@@ -8,12 +8,16 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/neyham/herdr-paddock/internal/config"
 	"github.com/neyham/herdr-paddock/internal/herdr"
 	"github.com/neyham/herdr-paddock/internal/model"
 )
 
 const (
-	version             = "0.6.7"
+	version = "0.6.7"
+	// Version is the build stamp shown in the help panel and by -version.
+	// version stays equal to herdr-plugin.toml; the suffix marks this fork.
+	Version             = version + "+custom"
 	detailReadLines     = 400
 	detailMaxLines      = 4000
 	detailRefreshPeriod = time.Second
@@ -72,6 +76,7 @@ type Model struct {
 	selfPane      string
 	composePane   string // wall compose target, pinned when the input gains focus
 	everSnapped   bool   // at least one successful snapshot arrived
+	cfg           config.Config
 }
 
 type herdrMsg struct {
@@ -111,6 +116,11 @@ type tickDetail time.Time
 type tickPulse time.Time
 
 func New() Model {
+	return NewWithConfig(config.FromEnv(os.Getenv))
+}
+
+func NewWithConfig(cfg config.Config) Model {
+	cfg = cfg.Clamp()
 	ti := textinput.New()
 	ti.Prompt = "▸ "
 	// Never let the input fall back to the terminal default (white) — it is
@@ -143,6 +153,7 @@ func New() Model {
 		ages:        map[string]ageMark{},
 		selfTab:     os.Getenv("HERDR_TAB_ID"),
 		selfPane:    os.Getenv("HERDR_PANE_ID"),
+		cfg:         cfg,
 	}
 }
 
@@ -1107,8 +1118,9 @@ func (m *Model) fetchFeedReads(force bool) tea.Cmd {
 	}
 	m.previewAfter = ids[len(ids)-1]
 	bin := m.bin
+	lines := previewReadLines(m.cfg)
 	return func() tea.Msg {
-		return previewsMsg{byPane: herdr.ReadMany(bin, ids, 28), revs: revs, seq: seq}
+		return previewsMsg{byPane: herdr.ReadMany(bin, ids, lines), revs: revs, seq: seq}
 	}
 }
 
@@ -1119,6 +1131,12 @@ func (m *Model) storePreview(pane, text string, seq int) bool {
 	m.previews[pane] = text
 	m.previewSeq[pane] = seq
 	return true
+}
+
+// previewReadLines sizes a wall pane read: a full preview plus the agent
+// chrome under it has to fit, or the cleaner would hand back a short card.
+func previewReadLines(cfg config.Config) int {
+	return max(28, 3*cfg.PreviewLines)
 }
 
 type paneRev struct {
