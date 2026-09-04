@@ -19,6 +19,16 @@ var (
 	reCwdBranch  = regexp.MustCompile(`(?i)(?:^|[\s])(?:~/|/|[a-zA-Z]:\\)\S.*\s·\s+[A-Za-z0-9._/-]+$`)
 	reAutoStatus = regexp.MustCompile(`(?i)^auto\s·`)
 	reTaskCount  = regexp.MustCompile(`(?i)^\d+\s+tasks?$`)
+	// Claude Code's status line, as a shell prompt theme leaves it:
+	// "user@host ➜  repo  git:(main)  Fable 5.1 (high)  ctx:820k (82%) left".
+	// Each pattern needs a shape prose doesn't have — a context meter with a
+	// percentage, a real ➜ prompt, a git:( segment next to the meter.
+	reCtxMeter    = regexp.MustCompile(`(?i)\bctx:\s*\d+(\.\d+)?[km]?\b.*\(\d+%\)`)
+	reShellPrompt = regexp.MustCompile(`^\S+@\S+\s+➜`)
+	// the session id Claude Code prints under the prompt
+	reSessionID = regexp.MustCompile(`(?i)^session:\s*[0-9a-f]{8}-[0-9a-f]{4}-`)
+	// "new task? /clear to save 179.2k tokens", right-aligned over the input box
+	reClearHint = regexp.MustCompile(`(?i)/clear to save\s+\d+(\.\d+)?[km]?\s+tokens`)
 )
 
 // parseCardTitle extracts the task from herdr terminal titles that follow the
@@ -109,6 +119,14 @@ func looksLikeChrome(ln string) bool {
 	if strings.Contains(ln, "↑") && strings.Contains(ln, "↓") && strings.ContainsAny(ln, "0123456789") {
 		return true
 	}
+	trimmed := strings.TrimSpace(ln)
+	if reCtxMeter.MatchString(trimmed) || reShellPrompt.MatchString(trimmed) ||
+		reSessionID.MatchString(trimmed) || reClearHint.MatchString(trimmed) {
+		return true
+	}
+	if strings.Contains(trimmed, " git:(") && (strings.Contains(trimmed, "ctx:") || strings.Contains(trimmed, "left")) {
+		return true
+	}
 	low := strings.ToLower(ln)
 	if strings.Contains(low, "esc to interrupt") || strings.Contains(low, "ctrl+c to interrupt") ||
 		strings.Contains(low, "? for shortcuts") || strings.Contains(low, "auto-compact") ||
@@ -144,7 +162,6 @@ func looksLikeChrome(ln string) bool {
 			return true
 		}
 	}
-	trimmed := strings.TrimSpace(ln)
 	switch trimmed {
 	case "❯", ">", "›", "$", "~", "▼", "▲", "»", "→":
 		return true
@@ -196,6 +213,11 @@ func footerHint(ln string) bool {
 		return true
 	}
 	if reTaskCount.MatchString(t) {
+		return true
+	}
+	// Claude Code's mode row and its named-session row. ⧉ only counts down
+	// here, in the tail peel: it could plausibly open a line of prose.
+	if strings.HasPrefix(t, "⏵⏵") || strings.HasPrefix(t, "⧉") {
 		return true
 	}
 	return false
@@ -261,6 +283,25 @@ func peelableChrome(ln string, cursorCtx bool) bool {
 	return cursorCtx && cwdBranchLine(t)
 }
 
+// liftOverInputBox moves a confirmed cut up past the agent's input box. The
+// box is two rules with the line you are typing between them, so the frame
+// the tail found is its bottom rule and the text just above is yours, not the
+// agent's. Only a short run of blank or ❯ rows counts, and only with a second
+// frame closing it: everywhere else a bare ❯ line is content, and blocked
+// dialog options must survive.
+func liftOverInputBox(lines []string, cut int) int {
+	for i := cut - 1; i >= 0 && i >= cut-3; i-- {
+		if inputFrameLine(lines[i]) {
+			return i
+		}
+		t := strings.TrimSpace(lines[i])
+		if t != "" && !strings.HasPrefix(t, "❯") {
+			return cut
+		}
+	}
+	return cut
+}
+
 func frameHasChromeTail(lines []string, frame int, cursorCtx bool) bool {
 	sawChrome := false
 	for _, ln := range lines[frame+1:] {
@@ -292,7 +333,7 @@ func dropAgentChrome(lines []string) []string {
 	// decorative box in the agent's answer can sit near the tail too; cutting
 	// blindly at the last barrier used to discard the answer after that box.
 	if cut >= 0 {
-		lines = lines[:cut]
+		lines = lines[:liftOverInputBox(lines, cut)]
 	}
 	// Cursor's cwd/branch footer is only chrome when the footer markers are
 	// still present. Recompute after the frame cut so an answer line with the

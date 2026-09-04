@@ -8,12 +8,20 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/neyham/herdr-paddock/internal/config"
 	"github.com/neyham/herdr-paddock/internal/layout"
 	"github.com/neyham/herdr-paddock/internal/model"
 )
 
+// testCfg pins the palette: a test must never ask the terminal what its
+// background is, and the dark set is what the old fixtures were written for.
+func testCfg(cfg config.Config) config.Config {
+	cfg.Theme = config.ThemeDark
+	return cfg
+}
+
 func sampleModel(w, h int) Model {
-	m := New()
+	m := NewWithConfig(testCfg(config.Default()))
 	m.width, m.height = w, h
 	m.snap.Tabs = []model.TabRow{
 		{TabID: "w5:t6", PaneID: "p1", WSLabel: "shop", TabLabel: "hooks", Agent: "agy", Status: "working", Title: "Inspect herdr snapshot JSON shape"},
@@ -725,6 +733,76 @@ func TestAgentInputBoxAndFooterDropped(t *testing.T) {
 			if strings.Contains(joined, bad) {
 				t.Fatalf("%s: chrome %q leaked: %#v", c.name, bad, lines)
 			}
+		}
+	}
+}
+
+// the tail of a real Claude Code pane, shell prompt status line and all
+const claudeCodeTail = "  Still open from the proposed list: Grabowski engagement letter (create), JOS-1582 licensing comment, JOS-1370 ALIS comment. Say which,\n" +
+	"  or \"skip the rest.\"\n" +
+	"\n" +
+	"✻ Crunched for 52s · done 11:33 PM\n" +
+	"\n" +
+	"⏺ recap: Redesigning the end-of-day shutdown: the manual trial run is reviewed, Littlebird export and Open Loops sync are fixed, and\n" +
+	"  Linear is updated. Next: tell me whether to apply the three remaining proposed writes or skip them.\n" +
+	"                                                        new task? /clear to save 179.2k tokens\n" +
+	"──────────────────────────────────────────────────────────────────────────────────────────────\n" +
+	"❯ skip the rest\n" +
+	"──────────────────────────────────────────────────────────────────────────────────────────────\n" +
+	"  joshuaizzard@pro ➜  llm-wiki-v1  git:(main)  Fable 5.1 (high)  ctx:820k (82%) left       /rc\n" +
+	"  session: 1e027f56-9a79-4cd4-882b-7188981b7ea9\n" +
+	"  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents\n" +
+	"  ⧉  eod-manual-run-2026-09-03\n"
+
+func TestClaudeCodeStatusLineDropped(t *testing.T) {
+	joined := strings.Join(clipTranscript(claudeCodeTail, 96, 20), " ")
+	// The agent's own words include the phrase you then typed back at it, so
+	// the quote has to survive while the input box row goes.
+	for _, need := range []string{"recap:", "end-of-day shutdown", "Crunched for 52s", `or "skip the rest."`} {
+		if !strings.Contains(joined, need) {
+			t.Fatalf("real output %q was cut: %q", need, joined)
+		}
+	}
+	if strings.Count(joined, "skip the rest") != 1 {
+		t.Fatalf("the input box line should be gone, leaving only the agent's quote: %q", joined)
+	}
+	for _, bad := range []string{
+		"joshuaizzard@pro", "session:", "ctx:", "bypass permissions",
+		"eod-manual-run", "/clear to save", "❯ skip the rest", "❯",
+	} {
+		if strings.Contains(joined, bad) {
+			t.Fatalf("chrome %q leaked: %q", bad, joined)
+		}
+	}
+}
+
+// the option row sits above a footer rule with no second frame over it, so
+// it is a dialog the agent drew, not the line you are typing
+func TestBlockedOptionAboveAFooterRuleSurvives(t *testing.T) {
+	raw := "should I ship it?\n" +
+		"  ❯ 1. yes\n" +
+		"──────────────────────────────────────────────\n" +
+		"  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents\n"
+	joined := strings.Join(clipTranscript(raw, 60, 12), " ")
+	for _, need := range []string{"should I ship it?", "1. yes"} {
+		if !strings.Contains(joined, need) {
+			t.Fatalf("blocked dialog content %q was cut: %q", need, joined)
+		}
+	}
+	if strings.Contains(joined, "bypass permissions") {
+		t.Fatalf("mode row leaked: %q", joined)
+	}
+}
+
+func TestStatusLineProseSurvives(t *testing.T) {
+	for _, raw := range []string{
+		"the session: notes are in the doc",
+		"ctx: see above",
+		"user@host is the format",
+	} {
+		joined := strings.Join(clipTranscript(raw+"\n", 80, 12), " ")
+		if !strings.Contains(joined, raw) {
+			t.Fatalf("prose %q was read as chrome: %q", raw, joined)
 		}
 	}
 }

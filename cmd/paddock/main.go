@@ -18,13 +18,14 @@ func main() {
 	columns := flag.Int("columns", env.Columns, "cards per row (0 = auto, max 8)")
 	previewLines := flag.Int("preview-lines", env.PreviewLines, "preview lines per card on a desktop (3-40)")
 	noSummary := flag.Bool("no-summary", !env.Summary, "ignore the agent status block, always show the tail preview")
+	theme := flag.String("theme", env.Theme, "palette: auto, dark or light")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println("paddock " + ui.Version)
 		return
 	}
-	cfg := config.Config{Columns: *columns, PreviewLines: *previewLines, Summary: !*noSummary}
+	cfg := config.Config{Columns: *columns, PreviewLines: *previewLines, Summary: !*noSummary, Theme: *theme}
 	p := tea.NewProgram(ui.NewWithConfig(cfg), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "paddock: %v\n", err)

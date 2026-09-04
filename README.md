@@ -115,6 +115,7 @@ Flags win over environment variables, which win over the defaults:
 | `-columns N` | `PADDOCK_COLUMNS` | `0` (auto) | cards per row, up to 8 |
 | `-preview-lines N` | `PADDOCK_PREVIEW_LINES` | `12` | body lines per card on a desktop (3-40) |
 | `-no-summary` | `PADDOCK_SUMMARY=0` | on | ignore the status block, always show the tail |
+| `-theme NAME` | `PADDOCK_THEME` | `auto` | palette: `auto`, `dark` or `light` |
 | `-version` | | | print the version and exit |
 
 Auto keeps a desktop at three columns — wide cards read better than many
@@ -123,6 +124,10 @@ so far that a card drops under 18 cells; below that a card is a stripe. Phone
 and compact widths keep their own preview depth (5 and 8 lines), so
 `-preview-lines` only changes the desktop layout. A junk value in the
 environment falls back to the default for that field.
+
+`auto` asks the terminal for its background colour at startup; pin `dark` or
+`light` when it guesses wrong, which tmux and popup panes sometimes make it
+do.
 
 ## Agent status block
 

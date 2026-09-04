@@ -19,7 +19,7 @@ const blockPreview = "Wired the endpoint and verified the signatures.\n\n" +
 	"NEEDS ME: approve the regenerated openapi.json before I publish\n"
 
 func blockModel(w, h int, cfg config.Config, preview string) Model {
-	m := NewWithConfig(cfg)
+	m := NewWithConfig(testCfg(cfg))
 	m.width, m.height = w, h
 	m.snap.Tabs = []model.TabRow{
 		{TabID: "w1:t1", PaneID: "p1", WSLabel: "shop", TabLabel: "webhooks", Agent: "codex", Status: "working", Title: "Wire Stripe webhooks"},
