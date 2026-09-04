@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/neyham/herdr-paddock/internal/config"
 	"github.com/neyham/herdr-paddock/internal/herdr"
 	"github.com/neyham/herdr-paddock/internal/layout"
 	"github.com/neyham/herdr-paddock/internal/model"
@@ -119,27 +120,42 @@ type cardSlot struct {
 	idx, x, y, w, h int
 }
 
-func feedCols(w, n int) int {
-	if n <= 1 || w < 36 {
+// narrowest card that still reads as a card rather than a stripe
+const minCardW = 18
+
+// feedCols picks the column count. An explicit -columns is honoured at any
+// width, but never so far that a card drops under 18 cells — below that a
+// card is a stripe, not a card. Auto tops out at 3 on a desktop: wider
+// columns read better than more of them.
+func feedCols(cfg config.Config, w, n int) int {
+	if n <= 1 {
 		return 1
 	}
-	if w >= 120 && n >= 5 {
-		return 4
+	if cfg.Columns > 0 {
+		gap := 0
+		if w >= 42 && cfg.Columns > 1 {
+			gap = 1
+		}
+		maxCols := max(1, (w+gap)/(minCardW+gap))
+		return max(1, min(min(cfg.Columns, n), maxCols))
 	}
-	if w >= 80 && n >= 3 {
-		return 3
+	if w < 36 {
+		return 1
+	}
+	if layout.BandOf(w) == layout.Full {
+		return min(3, n)
 	}
 	return 2
 }
 
-func maxBodyFor(b layout.Band) int {
+func maxBodyFor(b layout.Band, cfg config.Config) int {
 	switch b {
 	case layout.Phone:
 		return 5
 	case layout.Compact:
 		return 8
 	default:
-		return 6
+		return cfg.PreviewLines
 	}
 }
 
@@ -153,7 +169,7 @@ func glanceSlots(m Model, w, viewH int) ([]cardSlot, int, []model.TabRow) {
 	if n == 0 || w < 4 || viewH < 3 {
 		return nil, 0, feed
 	}
-	cols := feedCols(w, n)
+	cols := feedCols(m.cfg, w, n)
 	gap := 0
 	if w >= 42 && cols > 1 {
 		gap = 1
@@ -176,7 +192,7 @@ func glanceSlots(m Model, w, viewH int) ([]cardSlot, int, []model.TabRow) {
 		}
 		x += colW[c] + gap
 	}
-	maxBody := maxBodyFor(layout.BandOf(w))
+	maxBody := maxBodyFor(layout.BandOf(w), m.cfg)
 	slots := make([]cardSlot, n)
 	for i := 0; i < n; i++ {
 		c := 0
@@ -258,8 +274,7 @@ func cardHeight(m Model, t model.TabRow, cardW, viewH, maxBody int) int {
 	if budget < 4 {
 		budget = innerW
 	}
-	body := previewLines(m, t, budget, maxBody)
-	bh := len(body)
+	bh := len(cardBody(m, t, budget, maxBody))
 	if bh < 1 {
 		bh = 1
 	}
@@ -278,10 +293,6 @@ func cardHeight(m Model, t model.TabRow, cardW, viewH, maxBody int) int {
 		h = min(4, viewH)
 	}
 	return h
-}
-
-func previewLines(m Model, t model.TabRow, w, maxLines int) []string {
-	return clipTranscript(cardPreview(m, t), w, maxLines)
 }
 
 func blit(dst []string, x, y int, src []string) {
@@ -557,24 +568,15 @@ func renderAgentCard(m Model, t model.TabRow, idx, total, w, h int, selected boo
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	raw := previewLines(m, t, budget, bodyH)
+	raw := cardBody(m, t, budget, bodyH)
 	var body []string
 	if len(raw) == 0 {
 		body = append(body, stDim.Render(" quiet"))
 	} else {
-		qs := -1
-		if status == "blocked" {
-			qs = questionStart(raw)
-		}
-		for i, ln := range raw {
-			switch {
-			case qs >= 0 && i >= qs:
-				body = append(body, stText.Render(" "+ln))
-			case qs >= 0:
-				body = append(body, stDim.Render(" "+ln))
-			default:
-				body = append(body, stBody.Render(" "+ln))
-			}
+		prev := lineKind(-1)
+		for _, bl := range raw {
+			body = append(body, styleBody(bl, bl.kind != prev))
+			prev = bl.kind
 		}
 	}
 
@@ -763,7 +765,7 @@ func renderHelp(w, h int) []string {
 		body = append(body, sheepArt()...)
 	}
 	if w >= 56 {
-		return panel("help", version, body, w, h)
+		return panel("help", Version, body, w, h)
 	}
 	return clip(body, h)
 }
@@ -774,13 +776,10 @@ func feedTabs(m Model) []model.TabRow {
 	return model.FeedTabs(m.snap.Tabs, m.selfTab, m.selfPane, m.seen)
 }
 
-// clipTranscript cleans raw terminal text and keeps the tail, whole
-// paragraphs first: the agent's last message survives intact instead of an
-// arbitrary last-N-lines slice.
-func clipTranscript(raw string, w, maxLines int) []string {
-	if maxLines <= 0 {
-		return nil
-	}
+// cleanParagraphs is the cleaning half of clipTranscript: chrome dropped,
+// noise lines removed, blank lines splitting paragraphs — and no wrapping, so
+// the status block parser sees the agent's own lines.
+func cleanParagraphs(raw string) [][]string {
 	raw = strings.ReplaceAll(raw, "\r", "")
 	var paras [][]string
 	var cur []string
@@ -798,9 +797,27 @@ func clipTranscript(raw string, w, maxLines int) []string {
 			}
 			continue
 		}
-		cur = append(cur, layout.Wrap(useful, w)...)
+		cur = append(cur, useful)
 	}
 	flush()
+	return paras
+}
+
+// clipTranscript cleans raw terminal text and keeps the tail, whole
+// paragraphs first: the agent's last message survives intact instead of an
+// arbitrary last-N-lines slice.
+func clipTranscript(raw string, w, maxLines int) []string {
+	if maxLines <= 0 {
+		return nil
+	}
+	paras := cleanParagraphs(raw)
+	for i, p := range paras {
+		var wrapped []string
+		for _, ln := range p {
+			wrapped = append(wrapped, layout.Wrap(ln, w)...)
+		}
+		paras[i] = wrapped
+	}
 	if len(paras) == 0 {
 		return nil
 	}

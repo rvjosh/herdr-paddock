@@ -8,12 +8,14 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/neyham/herdr-paddock/internal/config"
 	"github.com/neyham/herdr-paddock/internal/herdr"
 	"github.com/neyham/herdr-paddock/internal/model"
 )
 
 const (
-	version             = "0.6.5"
+	// Version is the build stamp shown in the help panel and by -version.
+	Version             = "0.6.5+custom"
 	detailReadLines     = 400
 	detailMaxLines      = 4000
 	detailRefreshPeriod = time.Second
@@ -66,6 +68,7 @@ type Model struct {
 	selfPane      string
 	composePane   string // wall compose target, pinned when the input gains focus
 	composeTab    string
+	cfg           config.Config
 	everSnapped   bool // at least one successful snapshot arrived
 }
 
@@ -104,6 +107,11 @@ type tickDetail time.Time
 type tickPulse time.Time
 
 func New() Model {
+	return NewWithConfig(config.FromEnv(os.Getenv))
+}
+
+func NewWithConfig(cfg config.Config) Model {
+	cfg = cfg.Clamp()
 	ti := textinput.New()
 	ti.Prompt = "▸ "
 	// Never let the input fall back to the terminal default (white) — it is
@@ -133,6 +141,7 @@ func New() Model {
 		ages:     map[string]ageMark{},
 		selfTab:  os.Getenv("HERDR_TAB_ID"),
 		selfPane: os.Getenv("HERDR_PANE_ID"),
+		cfg:      cfg,
 	}
 }
 
@@ -1021,9 +1030,16 @@ func fetchFeedReads(m Model, force bool) tea.Cmd {
 		ids = ids[:8]
 	}
 	bin := m.bin
+	lines := previewReadLines(m.cfg)
 	return func() tea.Msg {
-		return previewsMsg{byPane: herdr.ReadMany(bin, ids, 28), revs: revs}
+		return previewsMsg{byPane: herdr.ReadMany(bin, ids, lines), revs: revs}
 	}
+}
+
+// previewReadLines sizes a wall pane read: a full preview plus the agent
+// chrome under it has to fit, or the cleaner would hand back a short card.
+func previewReadLines(cfg config.Config) int {
+	return max(28, 3*cfg.PreviewLines)
 }
 
 type paneRev struct {

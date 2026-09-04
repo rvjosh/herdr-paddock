@@ -70,6 +70,12 @@ Wired the endpoint and verified signatures:
 Now replaying the fixture events against the handler —
 payment_intent.succeeded and charge.refunded both pass,
 checking invoice.payment_failed next.
+
+STATUS: working
+SUMMARY: Wired the Stripe webhook route and verified signatures
+against the fixture events.
+NEXT: replay invoice.payment_failed, then the full suite
+NEEDS ME: nothing right now
 TXT
 		;;
 	p3)
@@ -117,6 +123,12 @@ Regenerated the API reference from the OpenAPI spec:
 
 Preview is up at docs-preview/api. Diff is small and
 mechanical — safe to publish whenever.
+
+STATUS: done
+SUMMARY: Regenerated the API reference from the spec — 38 endpoints,
+4 of them new, plus pagination examples.
+NEXT: publish once the spec diff is signed off
+NEEDS ME: approve the regenerated openapi.json before I publish
 TXT
 		;;
 	p7)

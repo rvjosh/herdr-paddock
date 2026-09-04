@@ -106,6 +106,54 @@ to scroll (paddock locks the tap target at press time, so a wall refresh
 mid-tap never opens the wrong card). In the zoomed view, flip between posts
 with `j`/`k`, and the reply box is one tap away.
 
+## Configuration
+
+Flags win over environment variables, which win over the defaults:
+
+| Flag | Env | Default | What it does |
+| --- | --- | --- | --- |
+| `-columns N` | `PADDOCK_COLUMNS` | `0` (auto) | cards per row, up to 8 |
+| `-preview-lines N` | `PADDOCK_PREVIEW_LINES` | `12` | body lines per card on a desktop (3-40) |
+| `-no-summary` | `PADDOCK_SUMMARY=0` | on | ignore the status block, always show the tail |
+| `-version` | | | print the version and exit |
+
+Auto keeps a desktop at three columns — wide cards read better than many
+narrow ones. A column count you ask for is honoured at any width, but never
+so far that a card drops under 18 cells; below that a card is a stripe. Phone
+and compact widths keep their own preview depth (5 and 8 lines), so
+`-preview-lines` only changes the desktop layout. A junk value in the
+environment falls back to the default for that field.
+
+## Agent status block
+
+If an agent ends its output with a block like this, the card shows the block
+instead of the tail of the transcript:
+
+```
+STATUS: working
+SUMMARY: wired the Stripe webhook route and verified signatures
+against the fixture events
+NEXT: replay invoice.payment_failed, then the full suite
+NEEDS ME: nothing right now
+```
+
+`STATUS` plus at least one of the others is enough. Keys are
+case-insensitive, may carry bullet or markdown decoration (`- `, `**STATUS:**`,
+`**STATUS**:`), accept `:`, `=` or a spaced dash before the value, and
+`NEEDS ME` may be written `NEEDS_ME`, `NEEDS-ME` or `NEEDSME`. A value can
+wrap onto the following lines.
+
+The card then reads status first, then `needs me` — highlighted, because it
+is the line addressed to you, and dropped entirely when it says "nothing",
+"none", "n/a" and friends — then `summary`, then `next`. The status word is
+colored like the card border. On a short card `next` gives way first, then
+`summary`; the status line always stays.
+
+Only the agent's **final** paragraph counts: a block with prose after it is
+an old status, not the current one. This is plain text parsing — no model is
+asked what a pane means, and paddock makes no network calls. `-no-summary`
+turns it off.
+
 ## Keys
 
 | Wall | |
